@@ -29,6 +29,8 @@ class Launcher extends Command
     public $directory;
     public $appPath;
 
+    public $envFile;
+
     /**
      * Create a new command instance.
      *
@@ -55,18 +57,17 @@ class Launcher extends Command
         $this->line('');
         $this->line('');
 
-        $this->name = "plopiplop";
-        $this->directory = "/home/jiedara/Code";
-        $this->appPath = "/home/jiedara/Code/plopiplop";
+        // $this->name = "plopiplop";
+        // $this->directory = "/home/jiedara/Code";
+        // $this->appPath = "/home/jiedara/Code/plopiplop";
 
-        // Composer\Factory::getHomeDir() method
-        // needs COMPOSER_HOME environment variable set
-        putenv('COMPOSER_HOME=' . getcwd() . '/vendor/bin/composer');
+        // // Composer\Factory::getHomeDir() method
+        // // needs COMPOSER_HOME environment variable set
+        // putenv('COMPOSER_HOME=' . getcwd() . '/vendor/bin/composer');
 
-        chdir($this->appPath);
-
-        $this->updateComposerJson();
-        die;
+        // chdir($this->appPath);
+        // $this->laravelScaffold();
+        // die;
 
         $this->name = $this->ask('What is the app name ?');
 
@@ -96,10 +97,75 @@ class Launcher extends Command
         $this->info("Basic Laravel application created.");
 
         $this->line("");
-        $this->line("Now, let's personalize it !");
+        $this->line("Now, let's update the composer.json file !");
 
         $this->updateComposerJson();
 
+        $this->line("");
+        $this->line("Come and fill the .env file with your values !");
+
+        $this->fillEnvFile();
+
+        $this->line("");
+
+        $this->createDatabase();
+
+        $this->line("");
+        $this->line("Let's take a look at Laravel scaffoldings");
+
+        $this->laravelScaffold();
+    }
+
+    public function fillEnvFile()
+    {
+        $protectedKeys = [
+            'APP_KEY',
+        ];
+
+        $envFile = explode(PHP_EOL, file_get_contents($this->appPath . DIRECTORY_SEPARATOR . '.env'));
+        $envFileArray = [];
+
+        //move around the envFile and create a key/value array
+        $part = 0;
+        foreach ($envFile as $index => $value) {
+            if (count($parsed = explode('=', $value)) > 1) {
+                $default = substr($value, strlen($parsed[0])+1);
+                //Ask to change value if possible
+                if (!in_array($parsed[0], $protectedKeys)) {
+                    $default = $this->ask('Value for ' . $parsed[0], $default);
+                }
+                $envFileArray[$part][$parsed[0]] = $default;
+            } else {
+                //create a new subarray if there's a jumpline
+                $part++;
+            }
+        }
+
+        $this->info('Default .env file filled.');
+
+        //new part for custom key/values
+        $part++;
+
+        $newKey = '';
+        while (null !== $newKey) {
+            $newKey = $this->ask('Add a new key [empty to skip]');
+            if (null !== $newKey) {
+                $newValue = $this->ask('What value go with the ' . $newKey . ' key ?', '');
+                $envFileArray[$part][$newKey] = $newValue;
+            }
+        }
+
+        $this->envFile = array_collapse($envFileArray);
+
+        $writeEnvFile = fopen($this->appPath . DIRECTORY_SEPARATOR . '.env', 'w');
+        foreach ($envFileArray as $part => $values) {
+            foreach ($values as $key => $value) {
+                fwrite($writeEnvFile, $key . '=' . $value);
+                fwrite($writeEnvFile, PHP_EOL);
+            }
+            fwrite($writeEnvFile, PHP_EOL);
+        }
+        fclose($writeEnvFile);
     }
 
     public function createLaravelApp()
@@ -115,7 +181,34 @@ class Launcher extends Command
         $this->composerApp->run($input);
     }
 
-    protected function updateComposerJson($composerJson = null)
+    public function createDatabase()
+    {
+        $connection = $this->envFile['DB_CONNECTION'];
+        $host = $this->envFile['DB_HOST'];
+        $port = $this->envFile['DB_PORT'];
+        $database = $this->envFile['DB_DATABASE'];
+        $username = $this->envFile['DB_USERNAME'];
+        $password = $this->envFile['DB_PASSWORD'];
+
+        try{
+            $conn = new \PDO("$connection:host=$host:$port", $username, $password);
+            // set the PDO error mode to exception
+            $conn->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+            $sql = "CREATE DATABASE $database";
+            // use exec() because no results are returned
+            $conn->exec($sql);
+            $this->info('Database ' . $database . ' created on the fly !');
+        }
+        catch(\PDOException $e)
+        {
+            $this->info('Database ' . $database . ' could not be created on the fly : ' . $e->getMessage());
+            $this->info('You may want to create it yourself to prevent Apollo from failing the other steps');
+        }
+
+        $conn = null;
+    }
+
+    public function updateComposerJson($composerJson = null)
     {
         if (null === $composerJson) {
             $composerJson = json_decode(file_get_contents($this->appPath . DIRECTORY_SEPARATOR . 'composer.json'), true);
@@ -125,13 +218,13 @@ class Launcher extends Command
 
         $backupComposerJson = $composerJson;
 
-        $composerJson['description'] = $this->ask('Description of the project ["Project created with Apollo"]') ?? "Project created with Apollo";
+        $composerJson['description'] = $this->ask('Description of the project', "Project created with Apollo");
 
         $package = "";
         while (null !== $package) {
             $package = $this->ask('Add a specific package to the project (require) [empty to skip]');
             if (null !== $package) {
-                $packageVersion = $this->ask('What version to use for the package ' . $package . ' ? [*]') ?? "*";
+                $packageVersion = $this->ask('What version to use for the package ' . $package . ' ?', '*');
                 $composerJson['require'][$package] = $packageVersion;
             }
         }
@@ -140,7 +233,7 @@ class Launcher extends Command
         while (null !== $devPackage) {
             $devPackage = $this->ask('Add a specific dev package to the project (require-dev) [empty to skip]');
             if (null !== $devPackage) {
-                $packageVersion = $this->ask('What version to use for the package ' . $package . ' ? [*]') ?? "*";
+                $packageVersion = $this->ask('What version to use for the package ' . $package . ' ?', '*');
                 $composerJson['require-dev'][$devPackage] = $packageVersion;
             }
         }
@@ -159,6 +252,20 @@ class Launcher extends Command
                 $this->error("Some package are not valid. Let's try again !");
                 $this->updateComposerJson($backupComposerJson);
             }
+        }
+    }
+
+    public function laravelScaffold()
+    {
+        $frontend = $this->choice('What frontend environment do you want ?', ['none', 'bootstrap', 'vue', 'react'], 1);
+        exec("php artisan preset $frontend");
+
+        $this->line('Laravel frontend preset set to ' . ucfirst($frontend));
+
+        $authSystem = $this->choice('Do you want the classic Laravel Auth system in the app ?', ['no', 'yes'], 1);
+        if ($authSystem === 'yes') {
+            exec("php artisan make:auth");
+            $this->line('Laravel Auth system deployed');
         }
     }
 }
