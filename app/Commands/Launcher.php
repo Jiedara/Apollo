@@ -44,15 +44,6 @@ class Launcher extends Command
         $this->line('');
         $this->line('');
 
-        // $this->name = "plop";
-        // $this->directory = "/home/jiedara/Code";
-        $this->appPath = "/home/jiedara/Code/plop";
-
-        // $env = new Env($this->appPath);
-        $scaffold = new Scaffolding($this->appPath);
-        $this->laravelScaffold($scaffold);
-        die;
-
         $this->name = $this->ask('What is the app name ?');
 
         $this->directory = $this->ask('Where do you want to create the "' . $this->name . '" app ?');
@@ -99,7 +90,7 @@ class Launcher extends Command
         $this->line('~~~~');
         $this->line('~~~~~~~');
         $this->line('~~~~~~~~~~~~~');
-        $this->line('Everything is set for now. Take a look at ' . this->appPath . ' !');
+        $this->line('Everything is set for now. Take a look at ' . $this->appPath . ' !');
         $this->line('~~~~~~~~~~~~~~');
         $this->line('~~~~~~~');
         $this->line('~~~~');
